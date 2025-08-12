@@ -3,6 +3,45 @@
 const { PuppeteerExtraPlugin } = require('puppeteer-extra-plugin');
 const getProxiedResponse = require('./core/proxy');
 
+/**
+ * Block resources (images, media, css, etc.) in puppeteer.
+ *
+ * Supports all resource types, blocking can be toggled dynamically.
+ *
+ * @param {Object} opts - Options
+ * @param {Set<string>} [opts.blockedTypes] - Specify which resourceTypes to block (by default none)
+ *
+ * @example
+ * const { DEFAULT_INTERCEPT_RESOLUTION_PRIORITY } = require('puppeteer')
+ * puppeteer.use(require('puppeteer-extra-plugin-block-resources')({
+ *   blockedTypes: new Set(['image', 'stylesheet']),
+ *   // Optionally enable Cooperative Mode for several request interceptors
+ *   interceptResolutionPriority: DEFAULT_INTERCEPT_RESOLUTION_PRIORITY
+ * }))
+ *
+ * //
+ * // and/or dynamically:
+ * //
+ *
+ * const blockResourcesPlugin = require('puppeteer-extra-plugin-block-resources')()
+ * puppeteer.use(blockResourcesPlugin)
+ *
+ * const browser = await puppeteer.launch({ headless: false })
+ * const page = await browser.newPage()
+ *
+ * blockResourcesPlugin.blockedTypes.add('image')
+ * await page.goto('http://www.msn.com/', {waitUntil: 'domcontentloaded'})
+ *
+ * blockResourcesPlugin.blockedTypes.add('stylesheet')
+ * blockResourcesPlugin.blockedTypes.add('other') // e.g. favicon
+ * await page.goto('http://news.ycombinator.com', {waitUntil: 'domcontentloaded'})
+ *
+ * blockResourcesPlugin.blockedTypes.delete('stylesheet')
+ * blockResourcesPlugin.blockedTypes.delete('other')
+ * blockResourcesPlugin.blockedTypes.add('media')
+ * blockResourcesPlugin.blockedTypes.add('script')
+ * await page.goto('http://www.youtube.com', {waitUntil: 'domcontentloaded'})
+ */
 class PuppeteerPageProxyPlugin extends PuppeteerExtraPlugin {
     constructor(proxyUrl, opts = {}) {
         super(typeof proxyUrl === 'string' ? { ...opts, proxyUrl } : { ...proxyUrl });
@@ -67,7 +106,9 @@ class PuppeteerPageProxyPlugin extends PuppeteerExtraPlugin {
             ? request.isInterceptResolutionHandled()
             : true;
 
-        this.debug('onRequest', { alreadyHandled });
+        this.debug('onRequest', {
+            alreadyHandled
+        });
 
         if (alreadyHandled) {
             return;
@@ -76,11 +117,14 @@ class PuppeteerPageProxyPlugin extends PuppeteerExtraPlugin {
         const {
             proxy: localProxyUrl,
             onlyNavigation: localOnlyNavigation,
-            interceptResolutionPriority: localInterceptResolutionPriority
+            interceptResolutionPriority: localInterceptResolutionPriority,
+            method,
+            headers,
+            postData,
         } = this.proxyCfgMap.get(page);
 
-        const interceptResolutionPriority = localInterceptResolutionPriority ?? this.interceptResolutionPriority;
-        const onlyNavigation = localOnlyNavigation ?? this.onlyNavigation;
+        const interceptResolutionPriority = localInterceptResolutionPriority || this.interceptResolutionPriority;
+        const onlyNavigation = localOnlyNavigation || this.onlyNavigation;
 
         do {
             if (!localProxyUrl && localProxyUrl !== undefined) {
@@ -94,13 +138,9 @@ class PuppeteerPageProxyPlugin extends PuppeteerExtraPlugin {
             if (onlyNavigation && !request.isNavigationRequest()) {
                 break;
             }
-            const requestUrl = request.url();
-            if (!requestUrl.startsWith("http:") && !requestUrl.startsWith("https:")) {
-                break;
-            }
 
             try {
-                const respondWith = await getProxiedResponse(request, proxyUrl);
+                const respondWith = await getProxiedResponse(request, proxyUrl, { method, headers, postData });
 
                 return request.respond(respondWith, interceptResolutionPriority);
             } catch (err) {
@@ -125,18 +165,11 @@ class PuppeteerPageProxyPlugin extends PuppeteerExtraPlugin {
         this.debug('onPageCreated', { proxy: this.proxyUrl });
 
         page.useProxy = (proxyUrl, opts = {}) => {
-            if (typeof proxyUrl === 'object' && proxyUrl !== null) {
-                this.proxyCfgMap.set(page, {
-                    ...proxyUrl,
-                    proxyUrl: undefined
-                });
-            } else {
-                this.proxyCfgMap.set(page, {
-                    // ...this.proxyCfgMap.get(page),
-                    ...opts,
-                    proxy: proxyUrl,
-                });
-            }
+            this.proxyCfgMap.set(page, {
+                // ...this.proxyCfgMap.get(page),
+                ...opts,
+                proxy: proxyUrl,
+            });
             if (!this.reqHdlRegSet.has(page)) {
                 page.on('request', this.onRequest.bind(this, page));
                 this.reqHdlRegSet.add(page);

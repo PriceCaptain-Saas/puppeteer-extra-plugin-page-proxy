@@ -1,5 +1,5 @@
 {
-  "name": "puppeteer-extra-plugin-page-proxy",
+  "name": "@pricecaptain-saas/puppeteer-extra-plugin-page-proxy",
   "description": "A puppeteer-extra plugin for setting proxies per page basis.",
   "version": "2.0.0",
   "author": "Yanlong Wang <nomagick@naiver.org>",
@@ -37,6 +37,9 @@
   "peerDependencies": {
     "puppeteer-extra": "*",
     "playwright-extra": "*"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
   },
   "peerDependenciesMeta": {
     "puppeteer-extra": {
