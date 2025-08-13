@@ -64,6 +64,7 @@ class PuppeteerPageProxyPlugin extends PuppeteerExtraPlugin {
         return {
             proxyUrl: undefined,
             interceptResolutionPriority: undefined,
+            
             onlyNavigation: undefined,
         };
     }
